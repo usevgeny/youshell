@@ -1,4 +1,4 @@
-#!/home/evgeny/Env/pyclientEnv/bin/python
+#!/usr/bin/python3
 
 from selenium import webdriver
 import time
