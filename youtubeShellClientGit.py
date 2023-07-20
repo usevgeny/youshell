@@ -13,7 +13,8 @@ import inquirer
 from os.path import exists
 
 #check if you have right permissions to write to this directory or change another emplacement
-homedir = os.environ['HOME']
+#homedir = os.environ['HOME']
+homedir = '/home/youshell'
 youshellConfigPath =  f"{homedir}.config/youshell"
 databaseFile = f"{youshellConfigPath}/youshell2.db"
 #channelsTable = 'Chanelll'
