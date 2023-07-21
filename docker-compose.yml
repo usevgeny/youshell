@@ -5,11 +5,12 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
-    container_name: myenvpro
+    container_name: youshell
     stdin_open: true
     tty: true
+    env_file:
+      - .env_example
     environment:
       - DISPLAY=${DISPLAY}
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
-        #command: sh -c "apt update && apt install -y vlc && vlc"
