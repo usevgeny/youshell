@@ -4,22 +4,26 @@ from selenium import webdriver
 import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
-
+import requests
+import re
 import sys
+import html
 import re
 import os
 import sqlite3
 import inquirer
 from os.path import exists
-from decouple import config
+#from decouple import config
 
-homedir = config('HOMEDIR')
+#homedir = config('HOMEDIR')
+homedir = '/home/evgeny'
 youshellConfigPath =  f"{homedir}/.config/youshell"
-databaseFile = f"{youshellConfigPath}/youshell2.db"
+databaseFile = f"{youshellConfigPath}/youshell.db"
 #channelsTable = 'Chanelll'
 channelsTable = 'channels'
 subscribtionsTextFile = f"{youshellConfigPath}/subscribe.txt"
 
+patternForbiddenChars = r'[{}\[\]\(\)<>"\'\\\/;:!@#$%^&*|~`+=?,.]'
 
 def dMenuSelect(titlesSet, prompt):
     titlesString = '\n'.join(titlesSet)
@@ -42,23 +46,71 @@ def selectTitle(titleSet, prompt, promptManager):
         return dMenuSelect(titleSet, prompt)
     return inquirerSelect(titleSet, prompt)
 
-def selectAndPlayVideo(urlToParse, promptManager):
-    patternForbiddenChars = r'[{}\[\]\(\)<>"\'\\\/;:!@#$%^&*|~`+=?,.]'
+def customSearch(searchQuery):
+    searchQuery=html.escape(searchQuery)
+    return f"https://invidious.protokolla.fi/search?q={searchQuery}"
+
+def getLinksFromSelenium(urlToParse):
+
+    parsedLinksDict = {}
     options = Options()
     options.headless = True
     driver = webdriver.Firefox(options=options)
     driver.get(urlToParse)
     videoBoxes = driver.find_elements(By.CLASS_NAME, 'h-box')
-    videos = {}
     for box in videoBoxes:
         try:
             title=box.find_element(By.XPATH, './/p[@dir="auto"]').text
             cleanTitle = re.sub(patternForbiddenChars, '', title) if title is not None else 'null'
             link=box.find_element(By.XPATH, './/a').get_attribute('href')
             if 'watch' in link:
-                videos[cleanTitle] = link
+                parsedLinksDict[cleanTitle] = link
         except Exception as e:
             pass
+    print("closing web driver")
+    driver.quit()
+    return parsedLinksDict
+
+def getLinksFromrequestsLib(urlToParse):
+
+    parsedLinksDict ={}
+    hostPattern=r'(https://[^/]+)'
+    linksBlockPattern = r'<a href.*auto.*' # pattern for the link with name
+    videoUrlPattern = r'(?<=<a href=")\/watch\?v=[^"]+' # pattern for the link url
+    titlePattern =  r'<p .*?>(.*?)</p>' #patter for the title
+    headers = {"user-agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36",}
+    with requests.session() as s:
+        hostUrl = re.findall(hostPattern, urlToParse)[0]
+        print("session_started")
+        s.headers = headers
+        response = html.unescape(s.get(urlToParse.rstrip()).text)
+        matches = re.findall(linksBlockPattern, response)
+
+        for match in matches:
+            title=re.findall(titlePattern, match)[0]
+
+            try:
+                title = title.encode('iso-8859-1').decode('utf-8')
+            except UnicodeDecodeError:
+                # If UTF-8 decoding fails, try with ISO-8859-1
+                title = title.encode('iso-8859-1').decode('iso-8859-1')
+
+            cleanTitle = re.sub(patternForbiddenChars, '', title) if title is not None else 'null'
+            videoUrl = re.findall(videoUrlPattern, match)[0]
+            parsedLinksDict[cleanTitle] = f"{hostUrl}{videoUrl}"
+        s.close()
+
+    return parsedLinksDict
+
+
+
+def getParsedVideoDict(urlToParse):
+    #return getLinksFromrequestsLib(urlToParse)
+    #return getLinksFromSelenium(urlToParse)
+    return getLinksFromrequestsLib(urlToParse)
+
+def selectAndPlayVideo(urlToParse, promptManager):
+    videos = getParsedVideoDict(urlToParse)
 
     # a set of unique titles
     titles = set(list(videos.keys()))
@@ -68,7 +120,7 @@ def selectAndPlayVideo(urlToParse, promptManager):
     selectedVideoUrl = videos[selectedVideoTitle]
 
     #playing video
-    playSelectedVideo(selectedVideoUrl, driver)
+    playSelectedVideo(selectedVideoUrl)
 
 
 
@@ -76,9 +128,7 @@ def selectPageToParse(selectedOption):
     playVideoFromSubscribtion(selectedOption)
 
 
-def playSelectedVideo(videoUrl, driverToClose):
-    print("closing web driver")
-    driverToClose.quit()
+def playSelectedVideo(videoUrl):
     command = f"mpv {videoUrl}"
     os.system(command)
 
@@ -89,13 +139,15 @@ def runYoutubeMenu(promptManager):
     selectedOptionTitle = selectTitle(optionsTitles, 'Select source: ', promptManager)
     if selectedOptionTitle != 'SEARCH':
         return searchMenuOptions[selectedOptionTitle]
+    else:
+        searchPrompt = input("Enter the video you are looking for:")
+        return (customSearch(searchPrompt))
 
 def getSearchMenuOptions():
-    dMenuOptions = {'SEARCH': 'unknown' }
 
     #checking if the channels list exists
     if exists(databaseFile):
-        dMenuOptions = extractValuesFromDatabase()
+        menuOptions = extractValuesFromDatabase()
     else:
         #generate database
         print("Subscribtions database generation")
@@ -113,9 +165,10 @@ def getSearchMenuOptions():
         db.close()
         populateDatabase(subscribtionsTextFile)
 
-        dMenuOptions = extractValuesFromDatabase()
+        menuOptions = extractValuesFromDatabase()
 
-    return dMenuOptions
+    menuOptions['SEARCH']='https://invidious.protokolla.fi/feed/popular'
+    return menuOptions
 
 
 def extractValuesFromDatabase():
