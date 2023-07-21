@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/home/evgeny/Env/pyclientEnv/bin/python
 
 from selenium import webdriver
 import time
@@ -11,11 +11,10 @@ import os
 import sqlite3
 import inquirer
 from os.path import exists
+from decouple import config
 
-#check if you have right permissions to write to this directory or change another emplacement
-#homedir = os.environ['HOME']
-homedir = '/home/youshell'
-youshellConfigPath =  f"{homedir}.config/youshell"
+homedir = config('HOMEDIR')
+youshellConfigPath =  f"{homedir}/.config/youshell"
 databaseFile = f"{youshellConfigPath}/youshell2.db"
 #channelsTable = 'Chanelll'
 channelsTable = 'channels'
