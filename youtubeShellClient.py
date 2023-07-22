@@ -183,27 +183,50 @@ def extractValuesFromDatabase():
 
     return subscribtionsOptions
 
+def getChannelName(urlToParse, isSelenium=False):
+    channelName = 'none'
+    if isSelenium:
+        options = Options()
+        options.headless = True
+        driver = webdriver.Firefox(options=options)
+        driver.get(urlToParse)
+        time.sleep(3)
+        element2 = driver.find_element(By.XPATH, """//*[@class="channel-name"]""")
+        return element2.text.replace(' ', '_')
+
+    with requests.session() as s:
+        print("session_started")
+        pattern = r'<div class="channel-profile.*?>(.*?)</span>'
+        headers = {"user-agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.181 Safari/537.36",}
+        s.headers = headers
+        response = html.unescape(s.get(urlToParse.rstrip()).text).replace('\n', '')
+        content_matches = re.findall(pattern, response)
+        channelName = content_matches[0]
+        try:
+            channelName = channelName.encode('iso-8859-1').decode('utf-8')
+        except UnicodeDecodeError:
+            # If UTF-8 decoding fails, try with ISO-8859-1
+            channelName = channelName.encode('iso-8859-1').decode('iso-8859-1')
+
+    return channelName.split('<span>')[-1].replace(' ', '_')
+
 
 def populateDatabase(subscribtionsTextFile):
     print("populating database")
 
     f = [i.strip('\n').split(',') for i in open(subscribtionsTextFile)]
-    options = Options()
-    options.headless = True
-    driver = webdriver.Firefox(options=options)
+#    options = Options()
+#    options.headless = True
+#    driver = webdriver.Firefox(options=options)
     db = sqlite3.connect(databaseFile)
     c = db.cursor()
 
     for k in f:
-        h = (k[0])
-        driver.get(h)
-        time.sleep(3)
-        element2 = driver.find_element(By.XPATH, """//*[@class="channel-name"]""")
-        pre_canell = element2.text
-
-        c.execute(f"""INSERT INTO {channelsTable}(NAME, URL) VALUES (?,?);""", (pre_canell, h))
+        hyperLink = (k[0])
+        channelName = getChannelName(hyperLink)
+        c.execute(f"""INSERT INTO {channelsTable}(NAME, URL) VALUES (?,?);""", (channelName, hyperLink))
         db.commit()
-        print(pre_canell + "  Added to the database!  ")
+        print(channelName + "  Added to the database!  ")
     db.close()
 
 def runYoutubeClient(promptManager = 'dmenu'):
